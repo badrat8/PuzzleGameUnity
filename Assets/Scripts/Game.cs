@@ -46,21 +46,78 @@ public class Game : MonoBehaviour
         }
     }
 
+    private bool IsSolvable(Piece[,] matrix)
+    {
+        int width = Constants.MaxColumns;
+        int height = Constants.MaxRows;
+        int[] puzzle = new int[width * height];
+        int index = 0;
+        int emptyRowFromBottom = 0;
+
+        for (int i = 0; i < height; i++) // j = columns, i = rows
+        {
+            for (int j = 0; j < width; j++)
+            {
+                if (matrix[i, j] == null)
+                {
+                    puzzle[index] = 0;
+                    emptyRowFromBottom = height - i; // 1-based (нижняя строка = 1)
+                }
+                else
+                {
+                    // Преобразуем позицию (OriginalI, OriginalJ) в 1D индекс
+                    int correctIndex = matrix[i, j].OriginalI * width + matrix[i, j].OriginalJ;
+                    puzzle[index] = correctIndex + 1; // +1 потому что 0 — это пустая
+                }
+                index++;
+            }
+        }
+
+        // Считаем количество инверсий
+        int inversions = 0;
+        for (int i = 0; i < puzzle.Length; i++)
+        {
+            for (int j = i + 1; j < puzzle.Length; j++)
+            {
+                if (puzzle[i] > 0 && puzzle[j] > 0 && puzzle[i] > puzzle[j])
+                    inversions++;
+            }
+        }
+
+        // Определим чётность ширины
+        bool isWidthEven = (width % 2 == 0);
+
+        if (isWidthEven)
+        {
+            // если ширина чётная — используем номер строки пустой снизу
+            return (inversions + emptyRowFromBottom) % 2 == 0;
+        }
+        else
+        {
+            // если ширина нечётная — только количество инверсий
+            return inversions % 2 == 0;
+        }
+    }
+
+
     private void Shuffle()
     {
         //shuffle
-        for (int i = 0; i < Constants.MaxColumns; i++)
+        do
         {
-            for (int j = 0; j < Constants.MaxRows; j++)
+            for (int i = 0; i < Constants.MaxColumns; i++)
             {
-                if (Matrix[i, j] == null) continue;
+                for (int j = 0; j < Constants.MaxRows; j++)
+                {
+                    if (Matrix[i, j] == null) continue;
 
-                int random_i = Random.Range(0, Constants.MaxColumns);
-                int random_j = Random.Range(0, Constants.MaxRows);
-                //swap'em
-                Swap(i, j, random_i, random_j);
+                    int random_i = Random.Range(0, Constants.MaxColumns);
+                    int random_j = Random.Range(0, Constants.MaxRows);
+                    //swap'em
+                    Swap(i, j, random_i, random_j);
+                }
             }
-        }
+        } while (!IsSolvable(Matrix));
     }
 
     private void Swap(int i, int j, int random_i, int random_j)
@@ -242,16 +299,20 @@ public class Game : MonoBehaviour
             for (int j = 0; j < Constants.MaxRows; j++)
             {
                 if (Matrix[i, j] == null) continue;
-                if (Matrix[i, j].CurrentI != Matrix[i, j].OriginalI ||
+                /*if (Matrix[i, j].CurrentI != Matrix[i, j].OriginalI ||
                     Matrix[i, j].CurrentI != Matrix[i, j].OriginalJ)
-                    return; //at least one wrong piece, so we haven't won (yet!)
+                    return; //at least one wrong piece, so we haven't won (yet!)*/
+                if (Matrix[i, j].CurrentI != Matrix[i, j].OriginalI ||
+                    Matrix[i, j].CurrentJ != Matrix[i, j].OriginalJ)
+                    return;
+
             }
         }
         //if we did not return, then we've won!
         gameState = GameState.End;
     }
 
-    private void ScalePieces() {
+    /*private void ScalePieces() {
         SpriteRenderer spriteRenderer = go[0].GetComponent<SpriteRenderer>();
         float screenHeight = Camera.main.orthographicSize * 2f;
         float screenWidth = screenHeight / Screen.height * Screen.width;
@@ -260,16 +321,57 @@ public class Game : MonoBehaviour
         for (int c = 0; c < go.Length; c++) {
             go[c].transform.localScale = new Vector3(width, height, 1f);
         }
+    } */
+
+    private void ScalePieces()
+    {
+        SpriteRenderer spriteRenderer = go[0].GetComponent<SpriteRenderer>();
+
+        float screenHeight = Camera.main.orthographicSize * 2f;
+        float screenWidth = screenHeight / Screen.height * Screen.width;
+
+        float pieceWidth = spriteRenderer.sprite.bounds.size.x;
+        float pieceHeight = spriteRenderer.sprite.bounds.size.y;
+
+        // вычисляем масштаб так, чтобы вся сетка влезла на экран
+        float scaleX = screenWidth / Constants.MaxColumns / pieceWidth;
+        float scaleY = screenHeight / Constants.MaxRows / pieceHeight;
+        float scale = Mathf.Min(scaleX, scaleY);
+
+        for (int i = 0; i < go.Length; i++)
+        {
+            go[i].transform.localScale = new Vector3(scale, scale, 1f);
+        }
     }
 
-    private Vector3 GetScreenCoordinatesFromVieport(int i, int j)
+
+    /*private Vector3 GetScreenCoordinatesFromVieport(int i, int j)
     {
         //solution for screen corners found here
         //http://answers.unity3d.com/questions/486035/how-to-find-world-coordinates-of-screen-corners-wi.html
         Vector3 point = Camera.main.ViewportToWorldPoint(new Vector3(0.25f * j, 1 - 0.25f * i, 0));
         point.z = 0;
         return point;
+    }*/
+
+    private Vector3 GetScreenCoordinatesFromVieport(int i, int j)
+    {
+        SpriteRenderer sr = go[0].GetComponent<SpriteRenderer>();
+        float pieceWidth = sr.bounds.size.x;
+        float pieceHeight = sr.bounds.size.y;
+
+        float totalWidth = pieceWidth * Constants.MaxColumns;
+        float totalHeight = pieceHeight * Constants.MaxRows;
+
+        // стартовая точка (левый верхний угол сетки), относительно центра экрана
+        Vector3 topLeft = new Vector3(-totalWidth / 2f, totalHeight / 2f, 0f);
+
+        float x = topLeft.x + j * pieceWidth + pieceWidth / 2f;
+        float y = topLeft.y - i * pieceHeight - pieceHeight / 2f;
+
+        return new Vector3(x, y, 0);
     }
+
 
     Vector3 screenPositionToAnimate;
     private Piece PieceToAnimate;
